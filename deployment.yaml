@@ -1,0 +1,81 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    env: preproduction
+    project: simpleserver
+  name: simpleserver-preproduction
+spec:
+  ports:
+  - port: 8080
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    env: preproduction
+    project: simpleserver
+  type: ClusterIP
+
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    env: preproduction
+    project: simpleserver
+  name: simpleserver-preproduction
+spec:
+  replicas: 20
+  selector:
+    matchLabels:
+      env: preproduction
+      project: simpleserver
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      annotations:
+        ad.datadoghq.com/simpleserver.check_names: '["prometheus"]'
+        ad.datadoghq.com/simpleserver.init_configs: '[{}]'
+        ad.datadoghq.com/simpleserver.instances: |
+          [{
+            "prometheus_url": "http://%%host%%:8080/metrics",
+            "namespace": "simpleserver.prom",
+            "metrics": ["*"],
+            "max_returned_metrics": 1000,
+            "send_histograms_buckets": false,
+            "tags": ["job:simpleserver", "roles:preproduction", "instances:%%host%%:8080"]
+          }]
+        prometheus.io/port: "8080"
+        prometheus.io/scrape: "true"
+      labels:
+        env: preproduction
+        project: simpleserver
+    spec:
+      containers:
+      - env:
+        - name: ENV
+          value: preproduction
+        - name: DATADOG_HOST
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        - name: DD_ENTITY_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.uid
+        image: rolandhawk/simpleserver:latest
+        name: simpleserver
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+        resources:
+          limits:
+            cpu: 500m
+            memory: 400Mi
+          requests:
+            cpu: 400m
+            memory: 300Mi
